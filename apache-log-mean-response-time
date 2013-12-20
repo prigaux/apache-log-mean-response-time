@@ -2,6 +2,8 @@
 use strict;
 use Time::HiRes 'sleep';
 
+# example of apache LogFormat that works with regex below:
+# LogFormat "... %Dus" combined
 my $get_microsecond_regex = qr/ (\d+)us$/;
 
 
