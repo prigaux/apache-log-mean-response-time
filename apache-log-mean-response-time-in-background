@@ -1,0 +1,30 @@
+#!/bin/sh
+
+logFile=$1
+update_time_seconds=1
+
+[ -f "$logFile" ] || { echo "usage: $0 <apache log file>"; exit 1; }
+
+tmp_file=/var/tmp/apache-log-mean-for-snmp--`basename $logFile`
+pid_file="$tmp_file.pid"
+
+if [ -f "$pid_file" ]; then
+    pid=`cat "$pid_file"`
+    rm -f "$pid_file"
+    if ps -p "$pid" -o cmd= | grep -q apache-log-mean-response-time; then
+	kill $pid
+    fi
+fi
+
+if [ -f "$tmp_file" ]; then
+    # previous background process has given an answer, return it
+    cat "$tmp_file"
+    rm -f "$tmp_file"
+else
+    # no value
+    echo
+fi
+
+# run in background to compute next answer in $tmp_file
+nohup apache-log-mean-response-time $update_time_seconds $logFile $tmp_file >/dev/null 2>&1 &
+echo $! > "$pid_file"

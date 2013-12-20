@@ -1,0 +1,76 @@
+#!/usr/bin/perl
+use strict;
+use Time::HiRes 'sleep';
+
+my $get_microsecond_regex = qr/ (\d+)us$/;
+
+
+sub readNewLines {
+    my ($F) = @_;
+    seek($F, 0, 1); # do not move, but update EOF
+    [ <$F> ];
+}
+
+sub computeSum {
+    my ($lines) = @_;
+    my $sum = 0;
+    foreach my $l (@$lines) {
+	my ($micro_s) = $l =~ $get_microsecond_regex or warn("invalid line '$l'\n"), next;
+	$sum += $micro_s;
+    }
+    $sum;
+}
+
+sub mean_ms {
+    my ($sum, $nb_reqs) = @_;
+    int($sum / 1000 / $nb_reqs);
+}
+
+sub writeToFile {
+    my ($file, $content) = @_;
+    open(my $result_fh, '>', $file) or usage("unable to write $file: $!");
+    print $result_fh $content;
+}
+
+sub writeToFile_atomic {
+    my ($file, $content) = @_;
+    writeToFile("$file.tmp", $content);
+    rename("$file.tmp", $file) or die "rename failed: $!\n";
+}
+
+sub usage {
+    my ($o_msg) = @_;
+    print STDERR "usage: $0 <delay in seconds> <log file> [<result file>]
+example: $0 0.5 /var/log/apache2/www-access.log
+";
+    $o_msg and print STDERR "\n$o_msg\n";
+    exit 1;
+}
+
+my ($time, $logFile, $o_result_file) = @ARGV;
+
+@ARGV >= 2 && @ARGV <= 3 or usage();
+
+$time =~ /^(\d+|\d*\.\d+)$/ or usage();
+
+open(my $LOG, '<', $logFile) or usage("unable to open $logFile: $!");
+seek($LOG, 0, 2); # go to end
+
+my ($global_sum, $global_nb_reqs);
+while (1) {
+    my $lines = readNewLines($LOG);
+    if (my $nb_reqs = @$lines) {
+	my ($sum) = computeSum($lines);
+	$global_nb_reqs += $nb_reqs;
+	$global_sum += $sum;
+	if ($o_result_file) {
+	    writeToFile($o_result_file, mean_ms($global_sum, $global_nb_reqs) . "\n");
+	} else {
+	    printf("%.3f h : %5dms (%4d reqs)    cumul:%5dms (%4d reqs)\n",
+		   time() % (3600*24) / 3600,
+		   mean_ms($sum, $nb_reqs), $nb_reqs,
+		   mean_ms($global_sum, $global_nb_reqs), $global_nb_reqs);
+	}
+    }
+    sleep($time);
+}
